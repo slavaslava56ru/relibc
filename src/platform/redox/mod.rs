@@ -42,7 +42,10 @@ use crate::{
         sys_file,
         sys_mman::{MAP_ANONYMOUS, PROT_READ, PROT_WRITE},
         sys_random,
-        sys_resource::{PRIO_PROCESS, RLIMIT_NLIMITS, rlimit, rusage, setpriority},
+        sys_resource::{
+            PRIO_PROCESS, RLIMIT_NLIMITS, RUSAGE_CHILDREN, RUSAGE_SELF, RUSAGE_THREAD, rlimit,
+            rusage, setpriority,
+        },
         sys_select::timeval,
         sys_stat::{S_ISGID, S_ISUID, S_ISVTX, stat},
         sys_statvfs::statvfs,
@@ -757,8 +760,14 @@ impl Pal for Sys {
         }
     }
 
-    fn getrusage(who: c_int, r_usage: Out<rusage>) -> Result<()> {
-        todo_skip!(0, "getrusage({}, {:p}): not implemented", who, r_usage);
+    fn getrusage(who: c_int, mut r_usage: Out<rusage>) -> Result<()> {
+        if !matches!(who, RUSAGE_SELF | RUSAGE_CHILDREN | RUSAGE_THREAD) {
+            return Err(Errno(EINVAL));
+        }
+        // TODO: the kernel tracks per-context CPU time but has no interface for a process to
+        // read its own; until it does, report zero usage. Callers must still get an initialized
+        // struct, which the old stub never wrote.
+        r_usage.write(unsafe { mem::zeroed() });
         Ok(())
     }
 
