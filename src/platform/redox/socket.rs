@@ -23,7 +23,7 @@ use crate::{
             EPIPE, EPROTONOSUPPORT,
         },
         fcntl,
-        netinet_in::{in_addr, in_port_t, sockaddr_in},
+        netinet_in::{IPPROTO_TCP, in_addr, in_port_t, sockaddr_in},
         signal::SIGPIPE,
         sys_select::timeval,
         sys_socket::{
@@ -992,22 +992,36 @@ impl PalSocket for Sys {
             Ok(())
         };
 
-        // TODO convert back to match when we support more levels
-        if level == SOL_SOCKET {
-            match option_name {
-                SO_RCVTIMEO => return set_timeout(b"read_timeout"),
-                SO_SNDTIMEO => return set_timeout(b"write_timeout"),
-                _ => {
-                    let metadata = [SocketCall::SetSockOpt as u64, option_name as u64];
-                    redox_rt::sys::sys_call_wo(
-                        socket as usize,
-                        option_value,
-                        CallFlags::empty(),
-                        &metadata,
-                    )?;
-                    return Ok(());
-                }
+        // The level travels in metadata[2] so the scheme can tell e.g. TCP_NODELAY (1) from
+        // SO_DEBUG (1); schemes that predate this ignore it and treat everything as SOL_SOCKET.
+        let forward = || -> Result<()> {
+            let metadata = [
+                SocketCall::SetSockOpt as u64,
+                option_name as u64,
+                level as u64,
+            ];
+            redox_rt::sys::sys_call_wo(
+                socket as usize,
+                option_value,
+                CallFlags::empty(),
+                &metadata,
+            )?;
+            Ok(())
+        };
+
+        match (level, option_name) {
+            (SOL_SOCKET, SO_RCVTIMEO) => return set_timeout(b"read_timeout"),
+            (SOL_SOCKET, SO_SNDTIMEO) => return set_timeout(b"write_timeout"),
+            (SOL_SOCKET, _) => return forward(),
+            // Only the tcp: scheme knows about levels; uds_stream would misread these as
+            // SOL_SOCKET options.
+            (level, _)
+                if level == IPPROTO_TCP as c_int
+                    && matches!(socket_domain_type(socket), Ok((AF_INET, SOCK_STREAM))) =>
+            {
+                return forward();
             }
+            _ => {}
         }
 
         todo_skip!(
