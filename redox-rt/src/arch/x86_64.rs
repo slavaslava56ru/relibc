@@ -338,12 +338,14 @@ asmfunction!(__relibc_internal_sigentry: ["
     // skip the sigaltstack logic.
     lea rdx, [rip + {pctl} + {pctl_off_actions}]
 
-    mov ecx, eax
-    and ecx, 63
+    // RCX still holds the interrupted code's value and is pushed as-is below, so index with RDI,
+    // whose original value is already saved in sa_tmp_rdi.
+    mov edi, eax
+    and edi, 63
 
     // LEA doesn't support 16x, so just do two x8s.
-    lea rdx, [rdx + 8 * rcx]
-    lea rdx, [rdx + 8 * rcx]
+    lea rdx, [rdx + 8 * rdi]
+    lea rdx, [rdx + 8 * rdi]
 
     bt qword ptr [rdx], {SA_ONSTACK_BIT}
     jnc 4f
