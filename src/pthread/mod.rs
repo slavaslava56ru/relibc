@@ -173,6 +173,7 @@ pub(crate) unsafe fn create(
 
     new_tcb.masters_ptr = current_tcb.masters_ptr;
     new_tcb.masters_len = current_tcb.masters_len;
+    new_tcb.sync_masters();
     new_tcb.linker_ptr = current_tcb.linker_ptr;
 
     let stack_end = unsafe { stack_base.add(stack_size) };

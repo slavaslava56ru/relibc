@@ -28,6 +28,7 @@ pub mod start;
 pub mod tcb;
 
 static mut STATIC_TCB_MASTER: Master = Master {
+    dynamic: false,
     ptr: ptr::null_mut(),
     image_size: 0,
     segment_size: 0,

@@ -28,7 +28,15 @@ pub struct Master {
     pub segment_size: usize,
     /// Offset in TLS to copy initial data to
     pub offset: usize,
+    /// Module was dlopen'ed after startup: it has no place in the static TLS block, and each
+    /// thread's block for it is allocated on first use by `__tls_get_addr`.
+    pub dynamic: bool,
 }
+
+/// The process-wide list of TLS masters, as (pointer, length in bytes). Threads read it instead
+/// of relying only on the snapshot in their own TCB, so modules dlopen'ed after a thread was
+/// created are still known to that thread.
+static GLOBAL_MASTERS: Mutex<(usize, usize)> = Mutex::new((0, 0));
 
 impl Master {
     /// The initial data for this TLS region
@@ -132,6 +140,15 @@ impl Tcb {
         }
     }
 
+    /// Refresh this TCB's view of the masters from the process-wide list.
+    pub fn sync_masters(&mut self) {
+        let (ptr, len) = *GLOBAL_MASTERS.lock();
+        if len > self.masters_len {
+            self.masters_ptr = ptr as *mut Master;
+            self.masters_len = len;
+        }
+    }
+
     /// The initial images for TLS
     pub fn masters(&self) -> Option<&'static mut [Master]> {
         if self.masters_ptr.is_null() || self.masters_len == 0 {
@@ -153,7 +170,7 @@ impl Tcb {
             && let Some(masters) = self.masters()
         {
             for (i, master) in masters.iter().skip(self.num_copied_masters).enumerate() {
-                if master.image_size == 0 {
+                if master.image_size == 0 || master.dynamic {
                     continue;
                 }
 
@@ -205,6 +222,7 @@ impl Tcb {
             self.masters_len = masters.len() * mem::size_of::<Master>();
             mem::forget(masters);
         }
+        *GLOBAL_MASTERS.lock() = (self.masters_ptr as usize, self.masters_len);
     }
 
     /// Activate TLS
@@ -229,6 +247,10 @@ impl Tcb {
 
             if let Some(masters) = self.masters() {
                 for (i, master) in masters.iter().enumerate() {
+                    if master.dynamic {
+                        // Allocated lazily by __tls_get_addr.
+                        continue;
+                    }
                     let tls = unsafe { self.tls().unwrap() };
                     let offset = if cfg!(any(target_arch = "x86", target_arch = "x86_64")) {
                         // x86{_64} TLS layout is backwards

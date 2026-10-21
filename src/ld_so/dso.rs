@@ -408,6 +408,7 @@ impl DSO {
                 let align = ph.p_align(NativeEndian).max(1) as usize;
                 let memsz = ph.p_memsz(NativeEndian) as usize;
                 Master {
+                    dynamic: false,
                     ptr: unsafe { base.byte_add(ph.p_vaddr(NativeEndian) as usize) },
                     image_size: ph.p_filesz(NativeEndian) as usize,
                     segment_size: memsz,
@@ -448,8 +449,11 @@ impl DSO {
         tls_offset: usize,
     ) -> Result<(DSO, Option<Master>, Vec<ProgramHeader>), String> {
         let elf = ElfFile::parse(data).map_err(|err| err.to_string())?;
-        let (mmap, tcb_master, dynamic) =
+        let (mmap, mut tcb_master, dynamic) =
             DSO::mmap_and_copy(path, &elf, data, base_addr, tls_offset)?;
+        if let Some(master) = tcb_master.as_mut() {
+            master.dynamic = dlopened;
+        }
 
         let name = match dynamic.soname {
             Some(soname) => soname,
@@ -771,6 +775,7 @@ impl DSO {
                     let align = ph.p_align(endian).max(1) as usize;
                     let memsz = ph.p_memsz(endian) as usize;
                     tcb_master = Some(Master {
+                        dynamic: false,
                         ptr,
                         image_size: ph.p_filesz(endian) as usize,
                         segment_size: memsz,

@@ -23,6 +23,10 @@ pub struct dl_tls_index {
 pub unsafe extern "C" fn __tls_get_addr(ti: *mut dl_tls_index) -> *mut c_void {
     let tcb = unsafe { Tcb::current().unwrap() };
     let ti = unsafe { &*ti };
+    if tcb.masters().map_or(0, |m| m.len()) < ti.ti_module {
+        // Module dlopen'ed after this thread's TCB was set up.
+        tcb.sync_masters();
+    }
     let masters = tcb.masters().unwrap();
 
     #[cfg(feature = "trace_tls")]
