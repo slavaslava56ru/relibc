@@ -471,7 +471,14 @@ impl Pal for Sys {
         // TODO: Find way to avoid lock.
         let _guard = CLONE_LOCK.write();
 
+        // The child only gets the forking thread. If another thread held the allocator lock at
+        // the moment of the fork, the child would inherit it locked and hang at its first
+        // allocation (typically while preparing to exec). Holding it ourselves across the fork
+        // guarantees it is free in both processes afterwards; fork_impl must not allocate.
+        let allocator = unsafe { &*crate::ALLOCATOR.get() };
+        unsafe { allocator.manual_lock() };
         let r = redox_rt::proc::fork_impl(&redox_rt::proc::ForkArgs::Managed);
+        unsafe { allocator.manual_unlock() };
 
         #[cfg(not(feature = "no_trace"))]
         if !matches!(r, Ok(0)) {

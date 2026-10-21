@@ -1059,21 +1059,15 @@ pub fn fork_inner(initial_rsp: *mut usize, args: &ForkArgs) -> Result<usize> {
                         continue;
                     }
 
-                    let buf;
-
-                    // TODO: write! using some #![no_std] Cursor type (tracking the length)?
-                    #[cfg(target_pointer_width = "64")]
-                    {
-                        //buf = *b"grant-fd-AAAABBBBCCCCDDDD";
-                        //write!(&mut buf, "grant-fd-{:>016x}", grant.base).unwrap();
-                        buf = alloc::format!("grant-fd-{:>016x}", grant.base).into_bytes();
-                    }
-
-                    #[cfg(target_pointer_width = "32")]
-                    {
-                        //buf = *b"grant-fd-AAAABBBB";
-                        //write!(&mut buf[..], "grant-fd-{:>08x}", grant.base).unwrap();
-                        buf = alloc::format!("grant-fd-{:>08x}", grant.base).into_bytes();
+                    // Formatted by hand: fork runs with the global allocator locked (so that no
+                    // other thread is mid-allocation when the address space is copied), so it
+                    // must not allocate.
+                    const DIGITS: usize = size_of::<usize>() * 2;
+                    let mut buf = [0_u8; 9 + DIGITS];
+                    buf[..9].copy_from_slice(b"grant-fd-");
+                    for (i, digit) in buf[9..].iter_mut().enumerate() {
+                        let nibble = (grant.base >> (4 * (DIGITS - 1 - i))) & 0xf;
+                        *digit = b"0123456789abcdef"[nibble];
                     }
 
                     let grant_fd = cur_addr_space_fd.dup_into_upper(&buf)?;
