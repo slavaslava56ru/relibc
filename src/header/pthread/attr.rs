@@ -467,14 +467,13 @@ pub unsafe extern "C" fn pthread_attr_setstacksize(
     attr: *mut pthread_attr_t,
     stacksize: size_t,
 ) -> c_int {
-    if stacksize as c_long >= PTHREAD_STACK_MIN {
-        unsafe {
-            (*attr.cast::<RlctAttr>()).stacksize = stacksize;
-        }
-        0
-    } else {
-        crate::header::errno::EINVAL
+    // Programs size stacks against the PTHREAD_STACK_MIN they were built with, and Rust's libc
+    // crate says 4096 for Redox: round small requests up rather than fail them.
+    let stacksize = stacksize.max(PTHREAD_STACK_MIN as size_t);
+    unsafe {
+        (*attr.cast::<RlctAttr>()).stacksize = stacksize;
     }
+    0
 }
 
 // TODO should be guarded by _GNU_SOURCE
