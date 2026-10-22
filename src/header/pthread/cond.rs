@@ -2,8 +2,9 @@
 
 use crate::{
     header::{
+        errno::EINVAL,
         pthread::{PTHREAD_PROCESS_PRIVATE, PTHREAD_PROCESS_SHARED, RlctMutex, e},
-        time::{CLOCK_REALTIME, timespec},
+        time::{CLOCK_MONOTONIC, CLOCK_REALTIME, timespec},
     },
     platform::types::{c_int, clockid_t, pthread_cond_t, pthread_condattr_t, pthread_mutex_t},
 };
@@ -78,12 +79,11 @@ pub unsafe extern "C" fn pthread_cond_init(
         .copied()
         .unwrap_or_default();
 
-    if attr.clock != CLOCK_REALTIME {
-        // As monotonic clock always smaller than realtime clock, this always result in instant timeout.
-        todo_skip!(0, "pthread_cond_init with monotonic clock");
+    if attr.clock != CLOCK_REALTIME && attr.clock != CLOCK_MONOTONIC {
+        return EINVAL;
     }
 
-    unsafe { cond.cast::<RlctCond>().write(RlctCond::new()) };
+    unsafe { cond.cast::<RlctCond>().write(RlctCond::with_clock(attr.clock)) };
 
     0
 }
@@ -292,8 +292,11 @@ pub unsafe extern "C" fn pthread_condattr_setclock(
     attr: *mut pthread_condattr_t,
     clock_id: clockid_t,
 ) -> c_int {
-    // TODO return EINVAL if clock_id is invalid or a CPU-time clock
-    (unsafe { *attr.cast::<RlctCondAttr>() }).clock = clock_id;
+    if clock_id != CLOCK_REALTIME && clock_id != CLOCK_MONOTONIC {
+        return EINVAL;
+    }
+    // Through the pointer: `(unsafe { *attr }).clock = ..` would only assign to a copy.
+    unsafe { (*attr.cast::<RlctCondAttr>()).clock = clock_id };
     0
 }
 
