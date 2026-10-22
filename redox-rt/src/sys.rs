@@ -954,6 +954,13 @@ pub struct FdTbl {
 
 impl FdTbl {
     pub const CONTEXT_MAX_FILES: u32 = 65_536;
+
+    /// Make room for the handles fork adds, so it never allocates: fork runs with the allocator
+    /// lock held by its atfork prepare hook, and growing a table would deadlock on it.
+    pub fn reserve_for_fork(&mut self) {
+        self.posix_fdtbl.table.reserve(64);
+        self.upper_fdtbl.table.reserve(64);
+    }
     pub const DEFAULT_CAPACITY: usize = usize::BITS as usize;
 
     #[expect(

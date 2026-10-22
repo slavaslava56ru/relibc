@@ -464,6 +464,9 @@ pub extern "C" fn fdatasync(fildes: c_int) -> c_int {
 /// operation on the lock results in undefined behaviour.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fork() -> pid_t {
+    // Before the prepare hooks: one of them holds the allocator lock until fork returns.
+    #[cfg(target_os = "redox")]
+    redox_rt::current_filetable().reserve_for_fork();
     for prepare in unsafe { &fork_hooks[0] } {
         prepare();
     }
