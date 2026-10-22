@@ -965,6 +965,12 @@ pub fn fork_impl(args: &ForkArgs<'_>) -> Result<usize> {
     };
 
     if pid == 0 {
+        // Another parent thread may have held the file table lock when the address space was
+        // copied; that thread doesn't exist here.
+        crate::FILETABLE.lockword.store(
+            crate::sync::Mutex::<crate::FdTbl>::UNLOCKED,
+            core::sync::atomic::Ordering::Release,
+        );
         crate::signal::set_sigmask(Some(old_mask), None)?;
     }
     Ok(pid)
