@@ -27,7 +27,8 @@ pub static mut HOST_ENTRY: hostent = hostent {
 };
 pub static HOST_NAME: RawCell<Option<Vec<u8>>> = RawCell::new(None);
 pub static HOST_ALIASES: RawCell<Option<Vec<Vec<u8>>>> = RawCell::new(None);
-static _HOST_ALIASES: RawCell<Option<Vec<*mut c_char>>> = RawCell::new(None);
+/// Pointer array behind `HOST_ENTRY.h_aliases`; must live as long as the entry.
+pub(super) static _HOST_ALIASES: RawCell<Option<Vec<*mut c_char>>> = RawCell::new(None);
 pub static mut HOST_ADDR: Option<in_addr> = None;
 pub static mut HOST_ADDR_LIST: [*mut c_char; 2] = [ptr::null_mut(); 2];
 pub static mut _HOST_ADDR_LIST: [u8; 4] = [0u8; 4];

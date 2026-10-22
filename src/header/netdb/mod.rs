@@ -367,6 +367,8 @@ pub unsafe extern "C" fn gethostbyaddr(
                     h_addr_list: (&raw mut HOST_ADDR_LIST).cast(),
                 }
             };
+            // Moving the Vec keeps its buffer, which h_aliases points to.
+            unsafe { _HOST_ALIASES.unsafe_set(Some(host_aliases)) };
             &raw mut HOST_ENTRY
         }
         // `glibc` sets errno if an address doesn't have a host name
@@ -502,6 +504,8 @@ pub unsafe extern "C" fn gethostbyname2(name: *const c_char, af: c_int) -> *mut 
             h_addr_list: (&raw mut HOST_ADDR_LIST).cast(),
         }
     };
+    // Moving the Vec keeps its buffer, which h_aliases points to.
+    unsafe { _HOST_ALIASES.unsafe_set(Some(host_aliases)) };
     unsafe { sethostent(HOST_STAYOPEN) };
     (&raw mut HOST_ENTRY).cast::<hostent>()
 }
