@@ -10,6 +10,7 @@ use crate::{
     header::{
         bits_sigset_t::sigset_t,
         errno::{EBADF, EINTR},
+        fcntl::F_GETFD,
         sys_epoll::{
             EPOLL_CLOEXEC, EPOLL_CTL_ADD, EPOLLERR, EPOLLHUP, EPOLLIN, EPOLLNVAL, EPOLLOUT,
             EPOLLPRI, EPOLLRDBAND, EPOLLRDNORM, EPOLLWRBAND, EPOLLWRNORM, epoll_data, epoll_event,
@@ -17,7 +18,7 @@ use crate::{
         time::timespec,
     },
     platform::{
-        ERRNO, PalEpoll, Sys,
+        ERRNO, Pal, PalEpoll, Sys,
         types::{c_int, c_short, c_ulong},
     },
 };
@@ -131,6 +132,9 @@ pub unsafe fn poll_epoll(fds: &mut [pollfd], timeout: c_int, sigmask: *const sig
         return i32::try_from(closed).unwrap_or(i32::MAX);
     }
 
+    // An invalid fd is already a result: report it now instead of waiting for the others.
+    let timeout = if closed > 0 { 0 } else { timeout };
+
     let mut events: [epoll_event; 32] = unsafe { mem::zeroed() };
     match unsafe {
         Sys::epoll_pwait(
@@ -152,6 +156,20 @@ pub unsafe fn poll_epoll(fds: &mut [pollfd], timeout: c_int, sigmask: *const sig
                         }
                     }
                 }
+            }
+        }
+        Err(Errno(EBADF)) => {
+            // Another thread closed one of the fds after it was added: flag it as POLLNVAL.
+            let mut invalid = 0;
+            for pfd in fds.iter_mut() {
+                if pfd.fd >= 0 && Sys::fcntl(pfd.fd, F_GETFD, 0).is_err() {
+                    pfd.revents |= POLLNVAL;
+                    invalid += 1;
+                }
+            }
+            if invalid == 0 {
+                ERRNO.set(EBADF);
+                return -1;
             }
         }
         Err(Errno(err)) => {
